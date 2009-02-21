@@ -125,6 +125,7 @@ class DokuwikiView(GladeDelegate):
         self.view.version.set_text(version)
         pages = self._rpc.wiki.getAllPages()
         self._sections = {}
+        self.objectlist.clear()
         for page in pages:
             self.add_page(page)
         self.view.new_page.set_sensitive(True)
@@ -256,12 +257,33 @@ class DokuwikiView(GladeDelegate):
 
     def on_button_save__clicked(self, *args):
         self.post("Saving...")
-        text = self.process_text()
-        self._rpc.wiki.putPage(self.current, text, {})
-        if not self.current in self._sections:
-            self.add_page({"id":self.current})
-        self.getHtmlView()
-        self.post("Saved")
+        dialog = gtk.Dialog(title = "Commit message",
+                            flags = gtk.DIALOG_MODAL, 
+                            buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT, 
+                                     gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+        entry = gtk.Entry()
+        minor = gtk.CheckButton("Minor")
+        dialog.vbox.add(gtk.Label("Your attention to detail\nIs greatly appreciated"))
+        dialog.vbox.add(entry)
+        dialog.vbox.add(minor)
+        dialog.show_all()
+        response = dialog.run()
+        if response == gtk.RESPONSE_ACCEPT:
+            self._rpc.wiki.putPage(self.current, "", {})
+            text = self.process_text()
+            pars = {}
+            if entry.get_text():
+                pars['sum'] = entry.get_text()
+            if minor.get_active():
+                pars['minor'] = minor.get_active()
+            self._rpc.wiki.putPage(self.current, text, pars)
+            if not self.current in self._sections:
+                self.add_page({"id":self.current})
+            self.getHtmlView()
+            self.post("Saved")
+
+        dialog.destroy()
+
 
     def selected(self, widget, object):
         if not object: return
