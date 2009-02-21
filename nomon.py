@@ -9,15 +9,23 @@ from kiwi.ui.objectlist import ObjectList, Column, ObjectTree
 from xmlrpclib import ServerProxy
 from urllib import urlencode
     
-#import gtksourceview2 as gtksourceview
 import gtkmozembed
+#import gtksourceview2 as gtksourceview
 #import gtkhtml2
 #import simplebrowser
 
 from buffer import DokuwikiBuffer
 
+
 dialog_buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
                   gtk.STOCK_OK, gtk.RESPONSE_ACCEPT)
+
+class ModalDialog(gtk.Dialog):
+    def __init__(self, title):
+        gtk.Dialog.__init__(self, title = title,
+                            flags = gtk.DIALOG_MODAL, 
+                            buttons = dialog_buttons)
+
 
 # wrappers for kiwi treeview widgets
 class Section(object):
@@ -56,6 +64,7 @@ def setup_tags(table):
 table = gtk.TextTagTable()
 setup_tags(table)
 
+
 # main application classes
 class DokuwikiView(GladeDelegate):
     """
@@ -72,6 +81,7 @@ class DokuwikiView(GladeDelegate):
         self.page_edit = self.view.notebook1.get_nth_page(0)
         self.page_view = self.view.notebook1.get_nth_page(1)
         self.page_attach = self.view.notebook1.get_nth_page(2)
+        self.show_all()
 
     # general interface functions
     def post(self, text):
@@ -96,8 +106,6 @@ class DokuwikiView(GladeDelegate):
         columns = [Column(s) for s in columns]
         self.attachmentlist = ObjectList(columns)
 
-        self.attachmentlist.show()
-        #self.attachmentlist.connect("selection-changed", self.attaselected)
         self.view.attachments_vbox.add(self.attachmentlist)
 
     def setup_wikitree(self):
@@ -105,28 +113,37 @@ class DokuwikiView(GladeDelegate):
         columns = [Column(s) for s in columns]
         self.objectlist = ObjectTree(columns)
 
-        self.objectlist.show()
         self.objectlist.connect("selection-changed", self.selected)
         self.view.vbox2.add(self.objectlist)
 
     def setup_htmlview(self):
         self.htmlview = gtkmozembed.MozEmbed()
-        self.view.html_scrolledwindow.add_with_viewport(self.htmlview)
+        self.view.html_scrolledwindow.add(self.htmlview)
         self.htmlview.realize()
         self.htmlview.show()
 
     def setup_sourceview(self):
-        # sourceview
         self.buffer = DokuwikiBuffer(table)
-        self.stdin = gtk.TextView(self.buffer)
-        self.stdin.set_left_margin(5)
-        self.stdin.set_right_margin(5)
-        self.stdin.set_wrap_mode(gtk.WRAP_WORD_CHAR)
-        self.view.scrolledwindow1.add(self.stdin)
-        self.stdin.show()
-        self.show_all()
+        self.editor = gtk.TextView(self.buffer)
+        self.editor.set_left_margin(5)
+        self.editor.set_right_margin(5)
+        self.editor.set_wrap_mode(gtk.WRAP_WORD_CHAR)
+        self.view.scrolledwindow1.add(self.editor)
 
     # dokuwiki operations
+    def get_version(self):
+        version = self._rpc.dokuwiki.getVersion()
+        self.view.version.set_text(version)
+
+    def get_pagelist(self):
+        pages = self._rpc.wiki.getAllPages()
+        self._sections = {}
+        self.objectlist.clear()
+        for page in pages:
+            self.add_page(page)
+        self.view.new_page.set_sensitive(True)
+        self.view.delete_page.set_sensitive(True)
+
     def get_attachments(self, ns):
         attachments = self._rpc.wiki.getAttachments(ns, {})
         attachments = [DictWrapper(s) for s in attachments]
@@ -151,6 +168,17 @@ class DokuwikiView(GladeDelegate):
         #self.document.write_stream(text)
         #self.document.close_stream()
 
+    def put_page(self, text, summary, minor):
+        pars = {}
+        if summary:
+            pars['sum'] = summary
+        if minor:
+            pars['minor'] = minor
+        self._rpc.wiki.putPage(self.current, text, pars)
+        if not self.current in self._sections:
+            self.add_page({"id":self.current})
+
+    # put a page into the page tree
     def add_page(self, page):
         name = page["id"]
         path = name.split(":")
@@ -215,46 +243,37 @@ class DokuwikiView(GladeDelegate):
 
     def on_button_list__clicked(self, *args):
         self.post("Connecting...")
-        dialog = gtk.Dialog(title = "User Details",
-                            flags = gtk.DIALOG_MODAL, 
-                            buttons = dialog_buttons)
-        text_user = gtk.Entry()
-        text_pwd = gtk.Entry()
-        text_pwd.set_visibility(False)
-        hbox_user = gtk.HBox()
-        hbox_pwd = gtk.HBox()
-        hbox_user.pack_start(gtk.Label('user: '))
-        hbox_pwd.pack_start(gtk.Label('password: '))
-        hbox_user.add(text_user)
-        hbox_pwd.add(text_pwd)
-        dialog.vbox.add(hbox_user)
-        dialog.vbox.add(hbox_pwd)
+        dialog = ModalDialog("User Details")
+        # prepare
+        widgets = {}
+        items = ["user", "password"]
+        for i,item in enumerate(items):
+            widgets[item] = gtk.Entry()
+            if i == 1:
+                widgets[item].set_visibility(False)
+            hbox = gtk.HBox()
+            hbox.pack_start(gtk.Label(item+': '))
+            hbox.add(widgets[item])
+            dialog.vbox.add(hbox)
         dialog.show_all()
+        # run
         response = dialog.run()
-        user = text_user.get_text()
-        password = text_pwd.get_text()
+        user = widgets['user'].get_text()
+        password = widgets['password'].get_text()
         dialog.destroy()
         if not response == gtk.RESPONSE_ACCEPT: return
         # following commented line is for gtkhtml (not used)
         #simplebrowser.currentUrl = self.view.url.get_text()
+        # handle response
         params = urlencode({'u':user,'p':password})
         fullurl = self.view.url.get_text() + "/lib/exe/xmlrpc.php?"+ params
         self._rpc = ServerProxy(fullurl)
-        version = self._rpc.dokuwiki.getVersion()
-        self.view.version.set_text(version)
-        pages = self._rpc.wiki.getAllPages()
-        self._sections = {}
-        self.objectlist.clear()
-        for page in pages:
-            self.add_page(page)
-        self.view.new_page.set_sensitive(True)
-        self.view.delete_page.set_sensitive(True)
-        self.post("Page List Retrieved")
+        self.get_version()
+        self.get_pagelist()
+        self.post("Connected")
 
     def on_delete_page__clicked(self, *args):
-        dialog = gtk.Dialog(title = "Are you sure?",
-                            flags = gtk.DIALOG_MODAL, 
-                            buttons = dialog_buttons)
+        dialog = ModalDialog("Are you sure?")
         response = dialog.run()
         if response == gtk.RESPONSE_ACCEPT:
             value = self._sections[self.current]
@@ -264,9 +283,7 @@ class DokuwikiView(GladeDelegate):
         dialog.destroy()
 
     def on_new_page__clicked(self, *args):
-        dialog = gtk.Dialog(title = "Name for the new page",
-                            flags = gtk.DIALOG_MODAL, 
-                            buttons = dialog_buttons)
+        dialog = ModalDialog("Name for the new page")
         text_w = gtk.Entry()
         text_w.show()
         response = []
@@ -307,9 +324,7 @@ class DokuwikiView(GladeDelegate):
 
     def on_button_save__clicked(self, *args):
         self.post("Saving...")
-        dialog = gtk.Dialog(title = "Commit message",
-                            flags = gtk.DIALOG_MODAL, 
-                            buttons = dialog_buttons)
+        dialog = ModalDialog("Commit message")
         entry = gtk.Entry()
         minor = gtk.CheckButton("Minor")
         dialog.vbox.add(gtk.Label("Your attention to detail\nIs greatly appreciated"))
@@ -319,18 +334,10 @@ class DokuwikiView(GladeDelegate):
         response = dialog.run()
         if response == gtk.RESPONSE_ACCEPT:
             text = self.buffer.process_text()
-            pars = {}
-            if entry.get_text():
-                pars['sum'] = entry.get_text()
-            if minor.get_active():
-                pars['minor'] = minor.get_active()
-            self._rpc.wiki.putPage(self.current, text, pars)
-            if not self.current in self._sections:
-                self.add_page({"id":self.current})
+            self.put_page(text, entry.get_text(), minor.get_active())
             self.get_htmlview(self.current)
             self.get_versions(self.current)
             self.post("Saved")
-
         dialog.destroy()
 
     # unused stuff
@@ -349,15 +356,15 @@ class DokuwikiView(GladeDelegate):
     def setup_sourceview_gtksourceview(self):
         # XXX not used now
         self.buffer = gtksourceview.Buffer(table)
-        self.stdin = gtksourceview.View(self.buffer)
+        self.editor = gtksourceview.View(self.buffer)
         if True:
-            self.stdin.set_show_line_numbers(True)
+            self.editor.set_show_line_numbers(True)
             lm = gtksourceview.LanguageManager()
-            self.stdin.set_indent_on_tab(True)
-            self.stdin.set_indent_width(4)
-            self.stdin.set_property("auto-indent", True)
-            self.stdin.set_property("highlight-current-line", True)
-            self.stdin.set_insert_spaces_instead_of_tabs(True)
+            self.editor.set_indent_on_tab(True)
+            self.editor.set_indent_width(4)
+            self.editor.set_property("auto-indent", True)
+            self.editor.set_property("highlight-current-line", True)
+            self.editor.set_insert_spaces_instead_of_tabs(True)
             lang = lm.get_language("python")
             self.buffer.set_language(lang)
             self.buffer.set_highlight_syntax(True)
