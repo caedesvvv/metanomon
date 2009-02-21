@@ -34,7 +34,7 @@ class Wrapper(object):
         except:
             raise AttributeError
 
-# setup some tags
+# setup some style tags
 table = gtk.TextTagTable()
 for i,tag in enumerate(['h1','h2','h3','h4','h5','h6']):
     tag_h1 = gtk.TextTag(tag)
