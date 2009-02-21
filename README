@@ -1,0 +1,10 @@
+run with:
+
+ python zap.py
+
+
+dependencies:
+
+ gtkmozembed
+ kiwi
+
