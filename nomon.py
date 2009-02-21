@@ -55,6 +55,7 @@ tag_bold = gtk.TextTag('italic')
 tag_bold.set_property('style', pango.STYLE_ITALIC)
 table.add(tag_bold)
 
+
 class DokuwikiView(GladeDelegate):
     def __init__(self):
         GladeDelegate.__init__(self, gladefile="pydoku",
@@ -319,6 +320,7 @@ class DokuwikiView(GladeDelegate):
         #self.document.open_stream('text/html')
         #self.document.write_stream(text)
         #self.document.close_stream()
+
 
 if __name__ == "__main__":
     app = DokuwikiView()
