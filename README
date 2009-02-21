@@ -1,3 +1,8 @@
+-- NOMON --
+
+python-dokuwiki lab prototype 1
+
+
 RUNNING:
 
  python nomon.py
@@ -7,6 +12,12 @@ DEPENDENCIES:
 
  - gtkmozembed
  - kiwi
+
+
+INSTALLING:
+
+ not yet
+
 
 FEATURES:
 
@@ -18,4 +29,7 @@ FEATURES:
     - bold (no line wrapping)
     - no nesting for all of them
 
- 
+----------------
+
+pydoku project
+
