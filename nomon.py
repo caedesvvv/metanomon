@@ -7,17 +7,15 @@ from kiwi.ui.delegates import GladeDelegate
 from kiwi.ui.objectlist import ObjectList, Column, ObjectTree
 
 from xmlrpclib import ServerProxy
+from urllib import urlencode
     
 #import gtksourceview2 as gtksourceview
 import gtkmozembed
 #import gtkhtml2
 #import simplebrowser
 
-columns = [Column("name"),
-           Column("id", title="id"),
-           Column("lastModified"),
-           Column("perms"),
-           Column("size"),]
+dialog_buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
+                  gtk.STOCK_OK, gtk.RESPONSE_ACCEPT)
 
 class Section(object):
     def __init__(self, name):
@@ -60,12 +58,44 @@ class DokuwikiView(GladeDelegate):
     def __init__(self):
         GladeDelegate.__init__(self, gladefile="pydoku",
                           delete_handler=self.quit_if_last)
-        self.objectlist = ObjectTree(columns)
-        self.objectlist.show()
-        self.objectlist.connect("selection-changed",self.selected)
-        self.view.vbox2.add(self.objectlist)
+        self.setup_wikitree()
+        self.setup_attachments()
+        self.setup_side()
         self.setup_sourceview()
         self.setup_htmlview()
+        self.page_edit = self.view.notebook1.get_nth_page(0)
+        self.page_view = self.view.notebook1.get_nth_page(1)
+        self.page_attach = self.view.notebook1.get_nth_page(2)
+
+    def setup_side(self):
+        columns = ['user', 'sum', 'type', 'version', 'ip']
+        columns = [Column(s) for s in columns]
+        self.versionlist = ObjectList(columns)
+
+        self.view.side_vbox.pack_start(gtk.Label('Version Log:'), False, False)
+        self.view.side_vbox.add(self.versionlist)
+
+        self.view.side_vbox.pack_start(gtk.Label('BackLinks:'), False, False)
+        self.backlinks = ObjectList([Column('name')])
+        self.view.side_vbox.add(self.backlinks)
+
+    def setup_attachments(self):
+        columns = ['id', 'size', 'lastModified', 'writable', 'isimg', 'perms']
+        columns = [Column(s) for s in columns]
+        self.attachmentlist = ObjectList(columns)
+
+        self.attachmentlist.show()
+        #self.attachmentlist.connect("selection-changed", self.attaselected)
+        self.view.attachments_vbox.add(self.attachmentlist)
+
+    def setup_wikitree(self):
+        columns = ['name', 'id', 'lastModified', 'perms', 'size']
+        columns = [Column(s) for s in columns]
+        self.objectlist = ObjectTree(columns)
+
+        self.objectlist.show()
+        self.objectlist.connect("selection-changed", self.selected)
+        self.view.vbox2.add(self.objectlist)
 
     def post(self, text):
         id = self.view.statusbar.get_context_id("zap")
@@ -115,11 +145,61 @@ class DokuwikiView(GladeDelegate):
             self.buffer.set_language(lang)
             self.buffer.set_highlight_syntax(True)
 
+    def on_view_edit__toggled(self, widget):
+        if widget.get_active():
+            self.notebook1.insert_page(self.page_edit, gtk.Label('edit'), 0)
+        else:
+            self.notebook1.remove_page(self.notebook1.page_num(self.page_edit))
+
+    def on_view_view__toggled(self, widget):
+        if widget.get_active():
+            self.notebook1.insert_page(self.page_view, gtk.Label('view'), 1)
+        else:
+            self.notebook1.remove_page(self.notebook1.page_num(self.page_view))
+
+    def on_view_attachments__toggled(self, widget):
+        if widget.get_active():
+            self.notebook1.insert_page(self.page_attach, gtk.Label('attach'))
+        else:
+            self.notebook1.remove_page(self.notebook1.page_num(self.page_attach))
+
+    def on_view_extra__toggled(self, widget):
+        if widget.get_active():
+            self.backlinks.show()
+            self.versionlist.show()
+            self.view.hpaned2.set_position(self._prevpos)
+        else:
+            self.backlinks.hide()
+            self.versionlist.hide()
+            self._prevpos = self.view.hpaned2.get_position()
+            self.view.hpaned2.set_position(self.view.hpaned2.allocation.width)
+
     def on_button_list__clicked(self, *args):
         self.post("Connecting...")
+        dialog = gtk.Dialog(title = "User Details",
+                            flags = gtk.DIALOG_MODAL, 
+                            buttons = dialog_buttons)
+        text_user = gtk.Entry()
+        text_pwd = gtk.Entry()
+        text_pwd.set_visibility(False)
+        hbox_user = gtk.HBox()
+        hbox_pwd = gtk.HBox()
+        hbox_user.pack_start(gtk.Label('user: '))
+        hbox_pwd.pack_start(gtk.Label('password: '))
+        hbox_user.add(text_user)
+        hbox_pwd.add(text_pwd)
+        dialog.vbox.add(hbox_user)
+        dialog.vbox.add(hbox_pwd)
+        dialog.show_all()
+        response = dialog.run()
+        user = text_user.get_text()
+        password = text_pwd.get_text()
+        dialog.destroy()
+        if not response == gtk.RESPONSE_ACCEPT: return
         # following commented line is for gtkhtml (not used)
         #simplebrowser.currentUrl = self.view.url.get_text()
-        fullurl = self.view.url.get_text() + "/lib/exe/xmlrpc.php"
+        params = urlencode({'u':user,'p':password})
+        fullurl = self.view.url.get_text() + "/lib/exe/xmlrpc.php?"+ params
         self._rpc = ServerProxy(fullurl)
         version = self._rpc.dokuwiki.getVersion()
         self.view.version.set_text(version)
@@ -157,8 +237,7 @@ class DokuwikiView(GladeDelegate):
     def on_delete_page__clicked(self, *args):
         dialog = gtk.Dialog(title = "Are you sure?",
                             flags = gtk.DIALOG_MODAL, 
-                            buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT, 
-                                     gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+                            buttons = dialog_buttons)
         response = dialog.run()
         if response == gtk.RESPONSE_ACCEPT:
             value = self._sections[self.current]
@@ -170,8 +249,7 @@ class DokuwikiView(GladeDelegate):
     def on_new_page__clicked(self, *args):
         dialog = gtk.Dialog(title = "Name for the new page",
                             flags = gtk.DIALOG_MODAL, 
-                            buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT, 
-                                     gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+                            buttons = dialog_buttons)
         text_w = gtk.Entry()
         text_w.show()
         response = []
@@ -259,8 +337,7 @@ class DokuwikiView(GladeDelegate):
         self.post("Saving...")
         dialog = gtk.Dialog(title = "Commit message",
                             flags = gtk.DIALOG_MODAL, 
-                            buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT, 
-                                     gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+                            buttons = dialog_buttons)
         entry = gtk.Entry()
         minor = gtk.CheckButton("Minor")
         dialog.vbox.add(gtk.Label("Your attention to detail\nIs greatly appreciated"))
@@ -269,7 +346,6 @@ class DokuwikiView(GladeDelegate):
         dialog.show_all()
         response = dialog.run()
         if response == gtk.RESPONSE_ACCEPT:
-            self._rpc.wiki.putPage(self.current, "", {})
             text = self.process_text()
             pars = {}
             if entry.get_text():
@@ -284,13 +360,31 @@ class DokuwikiView(GladeDelegate):
 
         dialog.destroy()
 
+    def get_attachments(self, ns):
+        attachments = self._rpc.wiki.getAttachments(ns, {})
+        attachments = [Wrapper(s) for s in attachments]
+        self.attachmentlist.add_list(attachments)
+
+    def get_backlinks(self, pagename):
+        backlinks = self._rpc.wiki.getBackLinks(pagename)
+        backlinks = [Section(s) for s in backlinks]
+        self.backlinks.add_list(backlinks)
+
+    def get_versions(self, pagename):
+        versionlist = self._rpc.wiki.getPageVersions(pagename, 0)
+        versionlist = [Wrapper(s) for s in versionlist]
+        self.versionlist.add_list(versionlist)
 
     def selected(self, widget, object):
         if not object: return
+        if isinstance(object, Section):
+            self.get_attachments(object.name)
         if not isinstance(object, Wrapper): return
         text = self._rpc.wiki.getPage(object.id)
         self.current = object.id
         self.add_text(text)
+        self.get_backlinks(object.id)
+        self.get_versions(object.id)
 
     def add_text(self, text):
         buffer = self.stdin.get_buffer().set_property('text', '')
