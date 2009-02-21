@@ -1,10 +1,21 @@
-run with:
+RUNNING:
 
  python nomon.py
 
 
-dependencies:
+DEPENDENCIES:
 
- gtkmozembed
- kiwi
+ - gtkmozembed
+ - kiwi
 
+FEATURES:
+
+ - tree view of wiki pages
+ - create, delete and modify pages
+ - semi-wysiwyg:
+    - h1 -> h6 (full line)
+    - italic (no line wrapping)
+    - bold (no line wrapping)
+    - no nesting for all of them
+
+ 
