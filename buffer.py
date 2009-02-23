@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 import gtk
+import gtksourceview
 
-class DokuwikiBuffer(gtk.TextBuffer):
+#class DokuwikiBuffer(gtk.TextBuffer):
+class DokuwikiBuffer(gtksourceview.SourceBuffer):
     """
     A gtk text buffer with some wysiwyg properties
     for dokuwiki format.
     """
-    def __init__(self, *args):
-        gtk.TextBuffer.__init__(self, *args)
-
     def add_text(self, text):
+        self.begin_not_undoable_action()
         self.clear()
         for line in text.split('\n'):
             self.add_line(line)
+        self.end_not_undoable_action()
 
     def set_style(self, tag):
         start, end = self.get_selection_bounds()

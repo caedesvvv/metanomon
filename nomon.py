@@ -10,6 +10,7 @@ from xmlrpclib import ServerProxy
 from urllib import urlencode
     
 import gtkmozembed
+import gtksourceview
 #import gtksourceview2 as gtksourceview
 #import gtkhtml2
 #import simplebrowser
@@ -29,8 +30,12 @@ class ModalDialog(gtk.Dialog):
 
 # wrappers for kiwi treeview widgets
 class Section(object):
-    def __init__(self, name):
+    def __init__(self, name, id=None):
         self.name = name
+        if id:
+            self.id = id
+        else:
+            self.id = name
 
 class DictWrapper(object):
     def __init__(self, obj, id=None):
@@ -61,7 +66,8 @@ def setup_tags(table):
 
 
 # setup the tag table
-table = gtk.TextTagTable()
+#table = gtk.TextTagTable()
+table = gtksourceview.SourceTagTable()
 setup_tags(table)
 
 
@@ -82,6 +88,10 @@ class DokuwikiView(GladeDelegate):
         self.page_view = self.view.notebook1.get_nth_page(1)
         self.page_attach = self.view.notebook1.get_nth_page(2)
         self.show_all()
+
+    def quit_if_last(self, *args):
+        self.htmlview.destroy() # for some reason has to be deleted explicitly
+        GladeDelegate.quit_if_last(self)
 
     # general interface functions
     def post(self, text):
@@ -124,7 +134,13 @@ class DokuwikiView(GladeDelegate):
 
     def setup_sourceview(self):
         self.buffer = DokuwikiBuffer(table)
-        self.editor = gtk.TextView(self.buffer)
+        self.editor = gtksourceview.SourceView(self.buffer)
+        accel_group = gtk.AccelGroup()
+        self.get_toplevel().add_accel_group(accel_group)
+        self.editor.add_accelerator("paste-clipboard", accel_group, ord('v'), gtk.gdk.CONTROL_MASK, 0)
+        self.editor.add_accelerator("copy-clipboard", accel_group, ord('c'), gtk.gdk.CONTROL_MASK, 0)
+        self.editor.add_accelerator("cut-clipboard", accel_group, ord('x'), gtk.gdk.CONTROL_MASK, 0)
+        #self.editor = gtk.TextView(self.buffer)
         self.editor.set_left_margin(5)
         self.editor.set_right_margin(5)
         self.editor.set_wrap_mode(gtk.WRAP_WORD_CHAR)
@@ -191,7 +207,7 @@ class DokuwikiView(GladeDelegate):
             else: # a namespace
                 part_path = ":".join(path[:i+1])
                 if not part_path in self._sections:
-                    new = Section(part_path)
+                    new = Section(pathm, part_path)
                     self._sections[part_path] = new
                     self.objectlist.append(prev, new, False)
                 else:
@@ -202,7 +218,7 @@ class DokuwikiView(GladeDelegate):
     def selected(self, widget, object):
         if not object: return
         if isinstance(object, Section):
-            self.get_attachments(object.name)
+            self.get_attachments(object.id)
         if not isinstance(object, DictWrapper): return
         text = self._rpc.wiki.getPage(object.id)
         self.current = object.id
@@ -268,7 +284,10 @@ class DokuwikiView(GladeDelegate):
         params = urlencode({'u':user,'p':password})
         fullurl = self.view.url.get_text() + "/lib/exe/xmlrpc.php?"+ params
         self._rpc = ServerProxy(fullurl)
-        self.get_version()
+        try:
+            self.get_version()
+        except:
+            self.post("Failure to connect")
         self.get_pagelist()
         self.post("Connected")
 

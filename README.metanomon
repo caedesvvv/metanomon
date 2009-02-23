@@ -1,0 +1,31 @@
+METANOMON: python-dokuwiki lab prototype 2
+
+
+RUNNING:
+
+ python metanomon.py
+
+
+DEPENDENCIES:
+
+ - gtkmozembed
+ - kiwi (http://www.async.com.br/projects/kiwi/)
+ - twisted (http://twistedmatrix.com)
+ - metamodel (http://delcorp.org/metamodel/)
+
+
+INSTALLING:
+
+ not yet
+
+
+FEATURES:
+
+ - all features from nomon
+ - asynchronous xmlrpc using twisted
+ - persistence using metamodel
+
+----------------
+
+pydoku project
+

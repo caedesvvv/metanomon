@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.4.5 on Sat Feb 21 04:40:19 2009 -->
+<!--Generated with glade3 3.4.5 on Mon Feb 23 07:42:17 2009 -->
 <glade-interface>
   <widget class="GtkWindow" id="pydoku">
     <child>
@@ -190,7 +190,6 @@
                   <widget class="GtkEntry" id="url">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
-                    <property name="text" translatable="yes">http://wiki.kyanite-studios.org</property>
                   </widget>
                   <packing>
                     <property name="expand">False</property>
@@ -454,9 +453,23 @@
                       </widget>
                     </child>
                     <child>
-                      <widget class="GtkLabel" id="label1">
+                      <widget class="GtkHBox" id="hbox3">
                         <property name="visible">True</property>
-                        <property name="label" translatable="yes">edit</property>
+                        <child>
+                          <widget class="GtkImage" id="image4">
+                            <property name="visible">True</property>
+                            <property name="stock">gtk-edit</property>
+                          </widget>
+                        </child>
+                        <child>
+                          <widget class="GtkLabel" id="label1">
+                            <property name="visible">True</property>
+                            <property name="label" translatable="yes">edit</property>
+                          </widget>
+                          <packing>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
                       </widget>
                       <packing>
                         <property name="type">tab</property>
@@ -478,9 +491,23 @@
                       </packing>
                     </child>
                     <child>
-                      <widget class="GtkLabel" id="label2">
+                      <widget class="GtkHBox" id="hbox4">
                         <property name="visible">True</property>
-                        <property name="label" translatable="yes">view</property>
+                        <child>
+                          <widget class="GtkImage" id="image3">
+                            <property name="visible">True</property>
+                            <property name="stock">gtk-print-preview</property>
+                          </widget>
+                        </child>
+                        <child>
+                          <widget class="GtkLabel" id="label2">
+                            <property name="visible">True</property>
+                            <property name="label" translatable="yes">view</property>
+                          </widget>
+                          <packing>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
                       </widget>
                       <packing>
                         <property name="type">tab</property>
@@ -506,9 +533,23 @@
                       </packing>
                     </child>
                     <child>
-                      <widget class="GtkLabel" id="label3">
+                      <widget class="GtkHBox" id="hbox5">
                         <property name="visible">True</property>
-                        <property name="label" translatable="yes">attachments</property>
+                        <child>
+                          <widget class="GtkImage" id="image2">
+                            <property name="visible">True</property>
+                            <property name="stock">gnome-stock-attach</property>
+                          </widget>
+                        </child>
+                        <child>
+                          <widget class="GtkLabel" id="label3">
+                            <property name="visible">True</property>
+                            <property name="label" translatable="yes">attachments</property>
+                          </widget>
+                          <packing>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
                       </widget>
                       <packing>
                         <property name="type">tab</property>

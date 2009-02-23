@@ -3,6 +3,7 @@ import user
 import os
 import gtk
 import pango
+import time
 
 from kiwi.ui.gadgets import quit_if_last
 from kiwi.ui.delegates import GladeDelegate
@@ -12,7 +13,7 @@ from xmlrpclib import ServerProxy
 from urllib import urlencode
     
 import gtkmozembed
-#import gtksourceview2 as gtksourceview
+import gtksourceview
 #import gtkhtml2
 #import simplebrowser
 
@@ -22,6 +23,7 @@ from twisted.internet import gtk2reactor
 gtk2reactor.install()
 from twisted.internet import threads,reactor
 
+from kiwi.environ import Application
 
 from metamodel import SubscribableModel as Model
 from metamodel import Property, Password
@@ -51,14 +53,23 @@ if not os.path.exists(nomondir):
 cfg = FileDataSource(file=os.path.join(nomondir,'config.caf'))
 cfg.save()
 
+section_icon = gtk.gdk.pixbuf_new_from_file("/usr/share/icons/gnome/16x16/stock/document/stock_new-master-document.png")
+page_icon = gtk.gdk.pixbuf_new_from_file("/usr/share/icons/gnome/16x16/places/folder.png")
+
 # wrappers for kiwi treeview widgets
 class Section(object):
-    def __init__(self, name):
+    def __init__(self, name, id=None):
         self.name = name
+        self.icon = section_icon
+        if id:
+            self.id = id
+        else:
+            self.id = name
 
 class DictWrapper(object):
     def __init__(self, obj, id=None):
         self._obj = obj
+        self.icon = page_icon
         if id:
             self.name = id
     def __getattr__(self, name):
@@ -85,7 +96,8 @@ def setup_tags(table):
 
 
 # setup the tag table
-table = gtk.TextTagTable()
+#table = gtk.TextTagTable()
+table = gtksourceview.SourceTagTable()
 setup_tags(table)
 
 
@@ -99,6 +111,7 @@ class DokuwikiView(GladeDelegate):
                           delete_handler=self.quit_if_last)
         self.setup_wikitree()
         self.setup_attachments()
+        self.setup_lastchanges()
         self.setup_side()
         self.setup_sourceview()
         self.setup_htmlview()
@@ -109,9 +122,19 @@ class DokuwikiView(GladeDelegate):
         if len(cfg.getChildren()):
             wiki = cfg.getChildren()[0]
             self.connect(wiki.url, wiki.user, wiki.password)
+            self.view.url.set_text(wiki.url)
             self.wiki = wiki
             if wiki.current:
                 self.load_page(wiki.current)
+
+    # quit override to work with twisted
+    def quit_if_last(self, *args):
+        self.htmlview.destroy() # for some reason has to be deleted explicitly
+        windows = [toplevel
+               for toplevel in gtk.window_list_toplevels()
+                   if toplevel.get_property('type') == gtk.WINDOW_TOPLEVEL]
+        if len(windows) == 1:
+            reactor.stop()
 
     # general interface functions
     def post(self, text):
@@ -120,7 +143,7 @@ class DokuwikiView(GladeDelegate):
 
     # setup functions
     def setup_side(self):
-        columns = ['user', 'sum', 'type', 'version', 'ip']
+        columns = ['sum', 'user', 'type', 'version', 'ip']
         columns = [Column(s) for s in columns]
         self.versionlist = ObjectList(columns)
 
@@ -129,6 +152,7 @@ class DokuwikiView(GladeDelegate):
 
         self.view.side_vbox.pack_start(gtk.Label('BackLinks:'), False, False)
         self.backlinks = ObjectList([Column('name')])
+        self.backlinks.connect("selection-changed", self.change_selected)
         self.view.side_vbox.add(self.backlinks)
 
     def setup_attachments(self):
@@ -138,9 +162,20 @@ class DokuwikiView(GladeDelegate):
 
         self.view.attachments_vbox.add(self.attachmentlist)
 
+    def setup_lastchanges(self):
+        columns = ['name', 'author', 'lastModified', 'perms', 'version', 'size']
+        columns = [Column(s) for s in columns]
+        columns.append(Column('lastModified', sorted=True, order=gtk.SORT_DESCENDING))
+        self.lastchangeslist = ObjectList(columns)
+        self.lastchangeslist.connect("selection-changed", self.change_selected)
+
+        self.view.side_vbox.add(self.lastchangeslist)
+
+
     def setup_wikitree(self):
         columns = ['name', 'id', 'lastModified', 'perms', 'size']
         columns = [Column(s) for s in columns]
+        #columns.insert(Column("image",title="image", data_type=gtk.gdk.Pixbuf, justify=gtk.JUSTIFY_CENTER),0)
         self.objectlist = ObjectTree(columns)
 
         self.objectlist.connect("selection-changed", self.selected)
@@ -161,16 +196,25 @@ class DokuwikiView(GladeDelegate):
 
     def setup_sourceview(self):
         self.buffer = DokuwikiBuffer(table)
-        self.editor = gtk.TextView(self.buffer)
+        self.editor = gtksourceview.SourceView(self.buffer)
+        #self.editor.set_show_line_numbers(True)
+        accel_group = gtk.AccelGroup()
+        self.get_toplevel().add_accel_group(accel_group)
+        self.editor.add_accelerator("paste-clipboard", accel_group, ord('v'), gtk.gdk.CONTROL_MASK, 0)
+        self.editor.add_accelerator("copy-clipboard", accel_group, ord('c'), gtk.gdk.CONTROL_MASK, 0)
+        self.editor.add_accelerator("cut-clipboard", accel_group, ord('x'), gtk.gdk.CONTROL_MASK, 0)
+        #self.editor = gtk.TextView(self.buffer)
         self.editor.set_left_margin(5)
         self.editor.set_right_margin(5)
         self.editor.set_wrap_mode(gtk.WRAP_WORD_CHAR)
         self.view.scrolledwindow1.add(self.editor)
 
     # dokuwiki operations
+    def _getVersion(self):
+        return self._rpc.dokuwiki.getVersion()
+
     def get_version(self):
-        version = self._rpc.dokuwiki.getVersion()
-        self.view.version.set_text(version)
+        return threads.deferToThread(self._getVersion)
 
     def get_pagelist(self):
         pages = self._rpc.wiki.getAllPages()
@@ -180,6 +224,20 @@ class DokuwikiView(GladeDelegate):
             self.add_page(page)
         self.view.new_page.set_sensitive(True)
         self.view.delete_page.set_sensitive(True)
+        if self.wiki.current:
+            self.set_selection(self.wiki.current)
+        # XXX
+        self.get_recent_changes()
+
+    def _getRecentChanges(self):
+        return self._rpc.wiki.getRecentChanges(int(time.time()-(60*60*24*7)))
+
+    def _gotRecentChanges(self, changes):
+        changes = [DictWrapper(s) for s in changes]
+        self.lastchangeslist.add_list(changes)
+
+    def get_recent_changes(self):
+        self.callDeferred(self._getRecentChanges, self._gotRecentChanges)
 
     def get_attachments(self, ns):
         attachments = self._rpc.wiki.getAttachments(ns, {})
@@ -194,7 +252,7 @@ class DokuwikiView(GladeDelegate):
         self.backlinks.add_list(backlinks)
 
     def get_backlinks(self, pagename):
-        self.callDeferred(pagename, self._getBackLinks, self._gotBackLinks)
+        self.callDeferred(self._getBackLinks, self._gotBackLinks, pagename)
 
     def _getVersions(self, pagename):
         return self._rpc.wiki.getPageVersions(pagename, 0)
@@ -204,7 +262,7 @@ class DokuwikiView(GladeDelegate):
         self.versionlist.add_list(versionlist)
 
     def get_versions(self, pagename):
-        self.callDeferred(pagename, self._getVersions, self._gotVersions)
+        self.callDeferred(self._getVersions, self._gotVersions, pagename)
 
     def _getHtmlData(self, pagename):
         text = self._rpc.wiki.getPageHTML(pagename)
@@ -212,16 +270,12 @@ class DokuwikiView(GladeDelegate):
 
     def _gotHtmlData(self, text):
         if not self.htmlview.window: return
-        self.htmlview.render_data(text, len(text), self.url.get_text(), 'text/html')
+        self.htmlview.render_data(text, len(text), self.wiki.url, 'text/html')
         self.htmlview.realize()
         self.htmlview.show()
 
-    def callDeferred(self, pagename, get_func, got_func):
-        d = threads.deferToThread(get_func, pagename)
-        d.addCallback(got_func)
-
     def get_htmlview(self, pagename):
-        self.callDeferred(pagename, self._getHtmlData, self._gotHtmlData)
+        self.callDeferred(self._getHtmlData, self._gotHtmlData, pagename)
         #d.addErrback(self.someError)
 
         # XXX following is for gtkhtml (not used)
@@ -230,6 +284,10 @@ class DokuwikiView(GladeDelegate):
         #self.document.write_stream(text)
         #self.document.close_stream()
 
+    def callDeferred(self, get_func, got_func, *args):
+        d = threads.deferToThread(get_func, *args)
+        d.addCallback(got_func)
+
     def _getEditText(self, pagename):
         return self._rpc.wiki.getPage(pagename)
 
@@ -237,7 +295,7 @@ class DokuwikiView(GladeDelegate):
         self.buffer.add_text(text)
 
     def get_edittext(self, pagename):
-        self.callDeferred(pagename, self._getEditText, self._gotEditText)
+        self.callDeferred(self._getEditText, self._gotEditText, pagename)
 
     def put_page(self, text, summary, minor):
         pars = {}
@@ -261,18 +319,35 @@ class DokuwikiView(GladeDelegate):
             else: # a namespace
                 part_path = ":".join(path[:i+1])
                 if not part_path in self._sections:
-                    new = Section(part_path)
+                    new = Section(pathm, part_path)
                     self._sections[part_path] = new
                     self.objectlist.append(prev, new, False)
                 else:
                     new = self._sections[part_path]
             prev = new
 
+    def expand_to(self, pagename):
+        path = pagename.split(":")
+        for i,pathm in enumerate(path):
+             if not i == len(path)-1:
+                section = self._sections[":".join(path[:i+1])]
+                self.view.objectlist.expand(section)
+
+    def set_selection(self, pagename):
+        obj = self._sections[pagename]
+        self.expand_to(pagename)
+        self.view.objectlist.select(obj, True)
+        #self.selected(widget, obj)
+
     # page selected callback
+    def change_selected(self, widget, object):
+        if not object: return
+        self.set_selection(object.name)
+
     def selected(self, widget, object):
         if not object: return
         if isinstance(object, Section):
-            self.get_attachments(object.name)
+            self.get_attachments(object.id)
         if not isinstance(object, DictWrapper): return
         self.wiki.current = object.id
         cfg.save()
@@ -315,7 +390,6 @@ class DokuwikiView(GladeDelegate):
             self.view.hpaned2.set_position(self.view.hpaned2.allocation.width)
 
     def on_button_list__clicked(self, *args):
-        self.post("Connecting...")
         dialog = ModalDialog("User Details")
         # prepare
         widgets = {}
@@ -351,10 +425,19 @@ class DokuwikiView(GladeDelegate):
         # following commented line is for gtkhtml (not used)
         #simplebrowser.currentUrl = self.view.url.get_text()
         # handle response
+        self.post("Connecting to " + url)
         params = urlencode({'u':user,'p':password})
-        fullurl = self.view.url.get_text() + "/lib/exe/xmlrpc.php?"+ params
+        fullurl = url + "/lib/exe/xmlrpc.php?"+ params
         self._rpc = ServerProxy(fullurl)
-        self.get_version()
+        d = self.get_version()
+        d.addCallback(self.connected)
+        d.addErrback(self.error_connecting)
+
+    def error_connecting(self, *args):
+        self.post("Error connecting to " + self.wiki.url)
+
+    def connected(self, version):
+        self.view.version.set_text(version)
         self.get_pagelist()
         self.post("Connected")
 
@@ -381,6 +464,7 @@ class DokuwikiView(GladeDelegate):
             if text:
                 self.wiki.current = text
                 cfg.save()
+                self.buffer.clear()
         dialog.destroy()
 
     def on_button_h1__clicked(self, *args):
@@ -445,7 +529,6 @@ class DokuwikiView(GladeDelegate):
         self.htmlview = gtkhtml2.View()
         self.htmlview.set_document(self.document)
 
-
     def setup_sourceview_gtksourceview(self):
         # XXX not used now
         self.buffer = gtksourceview.Buffer(table)
@@ -458,6 +541,8 @@ class DokuwikiView(GladeDelegate):
             self.editor.set_property("auto-indent", True)
             self.editor.set_property("highlight-current-line", True)
             self.editor.set_insert_spaces_instead_of_tabs(True)
+            self.editor.connect('delete-text', self._editor_delete_text)
+            self.editor.connect('insert-text', self._editor_insert_text)
             lang = lm.get_language("python")
             self.buffer.set_language(lang)
             self.buffer.set_highlight_syntax(True)
