@@ -270,6 +270,7 @@ class DokuwikiView(GladeDelegate):
 
     def _gotHtmlData(self, text):
         if not self.htmlview.window: return
+        text = '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head>'+text
         self.htmlview.render_data(text, len(text), self.wiki.url, 'text/html')
         self.htmlview.realize()
         self.htmlview.show()
