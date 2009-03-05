@@ -10,6 +10,7 @@ import time
 
 from kiwi.ui.delegates import GladeDelegate
 from kiwi.ui.objectlist import ObjectList, Column, ObjectTree
+import kiwi.ui.proxywidget # XXX needed for pixbuf
 
 from xmlrpclib import ServerProxy
 from urllib import urlencode
@@ -57,8 +58,8 @@ if not os.path.exists(nomondir):
 cfg = FileDataSource(file=os.path.join(nomondir,'config.caf'))
 cfg.save()
 
-section_icon = gtk.gdk.pixbuf_new_from_file("/usr/share/icons/gnome/16x16/stock/document/stock_new-master-document.png")
-page_icon = gtk.gdk.pixbuf_new_from_file("/usr/share/icons/gnome/16x16/places/folder.png")
+page_icon = gtk.gdk.pixbuf_new_from_file("/usr/share/icons/gnome/16x16/mimetypes/ascii.png")
+section_icon = gtk.gdk.pixbuf_new_from_file("/usr/share/icons/gnome/16x16/places/folder.png")
 
 # wrappers for kiwi treeview widgets
 class Section(object):
@@ -178,10 +179,12 @@ class DokuwikiView(GladeDelegate):
 
 
     def setup_wikitree(self):
-        columns = ['name', 'id', 'lastModified', 'perms', 'size']
+        columns = ['id', 'lastModified', 'perms', 'size']
         columns = [Column(s) for s in columns]
-
+        columns.insert(0, Column('icon', title='name', data_type=gtk.gdk.Pixbuf))
         self.objectlist = ObjectTree(columns)
+        columns.insert(1, Column('name', column='icon'))
+        self.objectlist.set_columns(columns)
 
         self.objectlist.connect("selection-changed", self.selected)
         self.view.vbox2.add(self.objectlist)
