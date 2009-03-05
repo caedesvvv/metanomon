@@ -115,6 +115,7 @@ class DokuwikiView(GladeDelegate):
         GladeDelegate.__init__(self, gladefile="pydoku",
                           delete_handler=self.quit_if_last)
         self.throbber_icon = Throbber(self.view.throbber)
+        self.setup_wikislist()
         self.setup_wikitree()
         self.setup_attachments()
         self.setup_lastchanges()
@@ -128,7 +129,6 @@ class DokuwikiView(GladeDelegate):
         if len(cfg.getChildren()):
             wiki = cfg.getChildren()[0]
             self.connect(wiki.url, wiki.user, wiki.password)
-            self.view.url.set_text(wiki.url)
             self.wiki = wiki
             if wiki.current:
                 self.load_page(wiki.current)
@@ -148,6 +148,13 @@ class DokuwikiView(GladeDelegate):
         self.view.statusbar.push(id, text)
 
     # setup functions
+    def setup_wikislist(self):
+        self.wikislist = ObjectList([Column('url', title='Wiki')])
+        self.view.vbox2.pack_start(self.wikislist)
+        self.view.vbox2.reorder_child(self.wikislist, 0)
+        self.wikislist.add_list(cfg.getChildren())
+        self.wikislist.connect("selection-changed", self.wiki_selected)
+
     def setup_side(self):
         columns = ['sum', 'user', 'type', 'version', 'ip']
         columns = [Column(s) for s in columns]
@@ -155,6 +162,7 @@ class DokuwikiView(GladeDelegate):
 
         self.view.side_vbox.pack_start(gtk.Label('Version Log:'), False, False)
         self.view.side_vbox.add(self.versionlist)
+        self.versionlist.connect("selection-changed", self.version_selected)
 
         self.view.side_vbox.pack_start(gtk.Label('BackLinks:'), False, False)
         self.backlinks = ObjectList([Column('name')])
@@ -217,6 +225,12 @@ class DokuwikiView(GladeDelegate):
         self.editor.set_wrap_mode(gtk.WRAP_WORD_CHAR)
         self.view.scrolledwindow1.add(self.editor)
 
+        lm = gtksourceview.SourceLanguagesManager()
+        langs = lm.get_available_languages()
+        lang_diffs = filter(lambda s: s.get_name() == 'Diff', langs)
+        if lang_diffs:
+            self.buffer.set_language(lang_diffs[0])
+
     # dokuwiki operations
     def _getVersion(self):
         return self._rpc.dokuwiki.getVersion()
@@ -238,7 +252,7 @@ class DokuwikiView(GladeDelegate):
         self.get_recent_changes()
 
     def _getRecentChanges(self):
-        return self._rpc.wiki.getRecentChanges(int(time.time()-(60*60*24*7)))
+        return self._rpc.wiki.getRecentChanges(int(time.time()-(60*60*24*7*12)))
 
     def _gotRecentChanges(self, changes):
         changes = [DictWrapper(s) for s in changes]
@@ -305,7 +319,43 @@ class DokuwikiView(GladeDelegate):
 
     def _gotEditText(self, text):
         self.throbber_icon.stop()
+        self.buffer.set_highlight(False)
+        self.editor.set_editable(True)
         self.buffer.add_text(text)
+
+    def _getDiffText(self, pagename, version, idx):
+        return self._rpc.wiki.getPageVersion(pagename, version), idx
+
+    def _gotDiffText(self, data):
+        import difflib
+        import StringIO
+        text, idx = data
+        self.textstack[idx] = text
+        if not None in self.textstack:
+            fromlines = self.textstack[0].split("\n")
+            tolines = self.textstack[1].split("\n")
+            diff_text = difflib.unified_diff(fromlines, tolines, "a", "b",
+                                        self.versions[0],
+                                        self.versions[1])
+            self.throbber_icon.stop()
+            self.buffer.clear()
+            str_buffer = StringIO.StringIO()
+            for line in diff_text:
+                str_buffer.write(line+'\n')
+            str_buffer.seek(0)
+            self.buffer.add_text(str_buffer.read())
+            self.buffer.set_highlight(True)
+            self.editor.set_editable(False)
+
+    def get_difftext(self, pagename, version, prev_version):
+        self.throbber_icon.start()
+        self.textstack = [None, None]
+        self.versions = [version, prev_version]
+        self.callDeferred(self._getDiffText, self._gotDiffText,
+                                  pagename, prev_version, 0)
+        self.callDeferred(self._getDiffText, self._gotDiffText,
+                                  pagename, version, 1)
+
 
     def get_edittext(self, pagename):
         self.throbber_icon.start()
@@ -354,6 +404,29 @@ class DokuwikiView(GladeDelegate):
         #self.selected(widget, obj)
 
     # page selected callback
+    def wiki_selected(self, widget, wiki):
+        self.connect(wiki.url, wiki.user, wiki.password)
+        self.objectlist.clear()
+        self.versionlist.clear()
+        self.lastchangeslist.clear()
+        self.backlinks.clear()
+        self._sections = {}
+        self.wiki = wiki
+        self.buffer.clear()
+        if wiki.current:
+            self.load_page(wiki.current)
+
+    def version_selected(self, widget, object):
+        # yes, the previous item is the next in the widget
+        if object == None:
+            return
+        previous = widget.get_next(object)
+        if not previous:
+            return
+        prev_version = previous.version
+        self.get_difftext(self.wiki.current, int(object.version),
+                          int(prev_version))
+
     def change_selected(self, widget, object):
         if not object:
             return
@@ -406,14 +479,14 @@ class DokuwikiView(GladeDelegate):
             self._prevpos = self.view.hpaned2.get_position()
             self.view.hpaned2.set_position(self.view.hpaned2.allocation.width)
 
-    def on_button_list__clicked(self, *args):
+    def on_button_add__clicked(self, *args):
         dialog = ModalDialog("User Details")
         # prepare
         widgets = {}
-        items = ["user", "password"]
+        items = ["url","user", "password"]
         for i, item in enumerate(items):
             widgets[item] = gtk.Entry()
-            if i == 1:
+            if i == 2:
                 widgets[item].set_visibility(False)
             hbox = gtk.HBox()
             hbox.pack_start(gtk.Label(item+': '))
@@ -424,17 +497,16 @@ class DokuwikiView(GladeDelegate):
         response = dialog.run()
         user = widgets['user'].get_text()
         password = widgets['password'].get_text()
+        url = widgets['url'].get_text()
         dialog.destroy()
         if not response == gtk.RESPONSE_ACCEPT:
             return
-        url = self.view.url.get_text()
 
         self.wiki = cfg.new(Dokuwiki, 
                     url=url,
                     user=user,
                     password=password)
 
-        cfg.purgeChildren()
         cfg.addChild(self.wiki)
         cfg.save()
         self.connect(url, user, password)
@@ -548,24 +620,6 @@ class DokuwikiView(GladeDelegate):
         self.document.connect('request_url', self.request_url)
         self.htmlview = gtkhtml2.View()
         self.htmlview.set_document(self.document)
-
-    def setup_sourceview_gtksourceview(self):
-        # XXX not used now
-        self.buffer = gtksourceview.Buffer(table)
-        self.editor = gtksourceview.View(self.buffer)
-        if True:
-            self.editor.set_show_line_numbers(True)
-            lm = gtksourceview.LanguageManager()
-            self.editor.set_indent_on_tab(True)
-            self.editor.set_indent_width(4)
-            self.editor.set_property("auto-indent", True)
-            self.editor.set_property("highlight-current-line", True)
-            self.editor.set_insert_spaces_instead_of_tabs(True)
-            self.editor.connect('delete-text', self._editor_delete_text)
-            self.editor.connect('insert-text', self._editor_insert_text)
-            lang = lm.get_language("python")
-            self.buffer.set_language(lang)
-            self.buffer.set_highlight_syntax(True)
 
 
 if __name__ == "__main__":

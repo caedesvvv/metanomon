@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE glade-interface SYSTEM "glade-2.0.dtd">
-<!--Generated with glade3 3.4.5 on Wed Mar  4 01:26:08 2009 -->
+<!--Generated with glade3 3.4.5 on Thu Mar  5 20:52:37 2009 -->
 <glade-interface>
   <widget class="GtkWindow" id="pydoku">
+    <property name="icon">Throbber-small.png</property>
     <child>
       <widget class="GtkVBox" id="vbox1">
         <property name="visible">True</property>
@@ -204,14 +205,7 @@
               <widget class="GtkVBox" id="vbox2">
                 <property name="visible">True</property>
                 <child>
-                  <widget class="GtkEntry" id="url">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                  </widget>
-                  <packing>
-                    <property name="expand">False</property>
-                    <property name="fill">False</property>
-                  </packing>
+                  <placeholder/>
                 </child>
                 <child>
                   <widget class="GtkLabel" id="version">
@@ -225,7 +219,7 @@
                   </packing>
                 </child>
                 <child>
-                  <widget class="GtkButton" id="button_list">
+                  <widget class="GtkButton" id="button_add">
                     <property name="visible">True</property>
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
