@@ -45,7 +45,7 @@ class DokuwikiBuffer(gtksourceview.SourceBuffer):
                 tags = iter.get_toggled_tags(True)
                 for tag in tags:
                     name = tag.get_property('name')
-                    if name[0] == "h":
+                    if name and name[0] == "h":
                         result_text += mapping.get(name, '') + ' '
                     else:
                         result_text += mapping.get(name, '')
@@ -53,7 +53,7 @@ class DokuwikiBuffer(gtksourceview.SourceBuffer):
                 tags = iter.get_toggled_tags(False)
                 for tag in tags:
                     name = tag.get_property('name')
-                    if name[0] == "h":
+                    if name and name[0] == "h":
                         result_text += ' ' + mapping.get(name, '')
                     else:
                         result_text += mapping.get(name, '')

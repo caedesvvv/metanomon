@@ -1,11 +1,13 @@
 #!/usr/bin/env python
+"""
+A lint interface written in gtk.
+"""
 import user
 import os
 import gtk
 import pango
 import time
 
-from kiwi.ui.gadgets import quit_if_last
 from kiwi.ui.delegates import GladeDelegate
 from kiwi.ui.objectlist import ObjectList, Column, ObjectTree
 
@@ -18,12 +20,11 @@ import gtksourceview
 #import simplebrowser
 
 from buffer import DokuwikiBuffer
+from throbber import Throbber
 
 from twisted.internet import gtk2reactor
 gtk2reactor.install()
-from twisted.internet import threads,reactor
-
-from kiwi.environ import Application
+from twisted.internet import threads, reactor
 
 from metamodel import SubscribableModel as Model
 from metamodel import Property, Password
@@ -33,6 +34,9 @@ dialog_buttons = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
                   gtk.STOCK_OK, gtk.RESPONSE_ACCEPT)
 
 class ModalDialog(gtk.Dialog):
+    """
+    A simple modal dialog to ask confirmation.
+    """
     def __init__(self, title):
         gtk.Dialog.__init__(self, title = title,
                             flags = gtk.DIALOG_MODAL, 
@@ -80,7 +84,7 @@ class DictWrapper(object):
 
 # funtion to setup some simple style tags
 def setup_tags(table):
-    for i,tag in enumerate(['h1','h2','h3','h4','h5','h6']):
+    for i, tag in enumerate(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
         tag_h1 = gtk.TextTag(tag)
         tag_h1.set_property('size-points', 20-i*2)
         tag_h1.set_property('weight', 700)
@@ -109,6 +113,7 @@ class DokuwikiView(GladeDelegate):
     def __init__(self):
         GladeDelegate.__init__(self, gladefile="pydoku",
                           delete_handler=self.quit_if_last)
+        self.throbber_icon = Throbber(self.view.throbber)
         self.setup_wikitree()
         self.setup_attachments()
         self.setup_lastchanges()
@@ -175,7 +180,7 @@ class DokuwikiView(GladeDelegate):
     def setup_wikitree(self):
         columns = ['name', 'id', 'lastModified', 'perms', 'size']
         columns = [Column(s) for s in columns]
-        #columns.insert(Column("image",title="image", data_type=gtk.gdk.Pixbuf, justify=gtk.JUSTIFY_CENTER),0)
+
         self.objectlist = ObjectTree(columns)
 
         self.objectlist.connect("selection-changed", self.selected)
@@ -269,13 +274,16 @@ class DokuwikiView(GladeDelegate):
         return text
 
     def _gotHtmlData(self, text):
-        if not self.htmlview.window: return
+        self.throbber_icon.stop()
+        if not self.htmlview.window:
+            return
         text = '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head>'+text
         self.htmlview.render_data(text, len(text), self.wiki.url, 'text/html')
         self.htmlview.realize()
         self.htmlview.show()
 
     def get_htmlview(self, pagename):
+        self.throbber_icon.start()
         self.callDeferred(self._getHtmlData, self._gotHtmlData, pagename)
         #d.addErrback(self.someError)
 
@@ -293,9 +301,11 @@ class DokuwikiView(GladeDelegate):
         return self._rpc.wiki.getPage(pagename)
 
     def _gotEditText(self, text):
+        self.throbber_icon.stop()
         self.buffer.add_text(text)
 
     def get_edittext(self, pagename):
+        self.throbber_icon.start()
         self.callDeferred(self._getEditText, self._gotEditText, pagename)
 
     def put_page(self, text, summary, minor):
@@ -312,7 +322,7 @@ class DokuwikiView(GladeDelegate):
         name = page["id"]
         path = name.split(":")
         prev = None
-        for i,pathm in enumerate(path):
+        for i, pathm in enumerate(path):
             if i == len(path)-1: # a page
                 new = DictWrapper(page, pathm)
                 self._sections[name] = new
@@ -329,8 +339,8 @@ class DokuwikiView(GladeDelegate):
 
     def expand_to(self, pagename):
         path = pagename.split(":")
-        for i,pathm in enumerate(path):
-             if not i == len(path)-1:
+        for i, pathm in enumerate(path):
+            if not i == len(path)-1:
                 section = self._sections[":".join(path[:i+1])]
                 self.view.objectlist.expand(section)
 
@@ -342,14 +352,17 @@ class DokuwikiView(GladeDelegate):
 
     # page selected callback
     def change_selected(self, widget, object):
-        if not object: return
+        if not object:
+            return
         self.set_selection(object.name)
 
     def selected(self, widget, object):
-        if not object: return
+        if not object:
+            return
         if isinstance(object, Section):
             self.get_attachments(object.id)
-        if not isinstance(object, DictWrapper): return
+        if not isinstance(object, DictWrapper):
+            return
         self.wiki.current = object.id
         cfg.save()
         self.load_page(object.id)
@@ -395,7 +408,7 @@ class DokuwikiView(GladeDelegate):
         # prepare
         widgets = {}
         items = ["user", "password"]
-        for i,item in enumerate(items):
+        for i, item in enumerate(items):
             widgets[item] = gtk.Entry()
             if i == 1:
                 widgets[item].set_visibility(False)
@@ -409,7 +422,8 @@ class DokuwikiView(GladeDelegate):
         user = widgets['user'].get_text()
         password = widgets['password'].get_text()
         dialog.destroy()
-        if not response == gtk.RESPONSE_ACCEPT: return
+        if not response == gtk.RESPONSE_ACCEPT:
+            return
         url = self.view.url.get_text()
 
         self.wiki = cfg.new(Dokuwiki, 
@@ -427,7 +441,7 @@ class DokuwikiView(GladeDelegate):
         #simplebrowser.currentUrl = self.view.url.get_text()
         # handle response
         self.post("Connecting to " + url)
-        params = urlencode({'u':user,'p':password})
+        params = urlencode({'u':user, 'p':password})
         fullurl = url + "/lib/exe/xmlrpc.php?"+ params
         self._rpc = ServerProxy(fullurl)
         d = self.get_version()
@@ -503,6 +517,7 @@ class DokuwikiView(GladeDelegate):
         self.post("Saved")
 
     def on_button_save__clicked(self, *args):
+        """ Save button callback """
         dialog = ModalDialog("Commit message")
         entry = gtk.Entry()
         minor = gtk.CheckButton("Minor")
@@ -514,6 +529,7 @@ class DokuwikiView(GladeDelegate):
         if response == gtk.RESPONSE_ACCEPT:
             self.post("Saving...")
             text = self.buffer.process_text()
+            self.throbber_icon.start()
             d = self.put_page(text, entry.get_text(), minor.get_active())
             d.addCallback(self._pagePut)
         dialog.destroy()
