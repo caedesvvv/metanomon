@@ -114,9 +114,10 @@ class DokuwikiView(GladeDelegate):
     def __init__(self):
         GladeDelegate.__init__(self, gladefile="pydoku",
                           delete_handler=self.quit_if_last)
+        self._icons = {}
         self.throbber_icon = Throbber(self.view.throbber)
-        self.setup_wikislist()
         self.setup_wikitree()
+        self.setup_wikislist()
         self.setup_attachments()
         self.setup_lastchanges()
         self.setup_side()
@@ -149,11 +150,33 @@ class DokuwikiView(GladeDelegate):
 
     # setup functions
     def setup_wikislist(self):
-        self.wikislist = ObjectList([Column('url', title='Wiki')])
+        columns = [Column('url',format_func=self.get_favicon,data_type=gtk.gdk.Pixbuf,icon_size=gtk.ICON_SIZE_SMALL_TOOLBAR)]
+        self.wikislist = ObjectList(columns)
+        columns.append(Column('url', title='Wiki', column='url'))
+        self.wikislist.set_columns(columns)
         self.view.vbox2.pack_start(self.wikislist)
         self.view.vbox2.reorder_child(self.wikislist, 0)
         self.wikislist.add_list(cfg.getChildren())
         self.wikislist.connect("selection-changed", self.wiki_selected)
+        for wiki in cfg.getChildren():
+            self.download_favicon(wiki)
+
+
+    def download_favicon(self, wiki):
+        import urllib
+        icon_url = wiki.url+"/lib/tpl/sidebar/images/favicon.ico"
+        filename, headers = urllib.urlretrieve(icon_url, "/tmp/ico.ico")
+        if headers["Content-Type"] == 'image/x-icon':
+            self.add_favicon(wiki, filename)
+
+    def get_favicon(self, wiki_url):
+        return self._icons.get(wiki_url, page_icon)
+
+    def add_favicon(self, wiki, filename):
+        pixbuf = gtk.gdk.pixbuf_new_from_file(filename)
+        pixbuf = pixbuf.scale_simple(16,16,gtk.gdk.INTERP_BILINEAR)
+        self._icons[wiki.url] = pixbuf
+        self.objectlist.refresh()
 
     def setup_side(self):
         columns = ['sum', 'user', 'type', 'version', 'ip']
@@ -294,7 +317,8 @@ class DokuwikiView(GladeDelegate):
         self.throbber_icon.stop()
         if not self.htmlview.window:
             return
-        text = '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head>'+text
+        text = """<head><meta http-equiv="Content-Type" content="text/html;  charset=utf-8" />
+        </head><body>"""+text+"</body>"
         self.htmlview.render_data(text, len(text), self.wiki.url, 'text/html')
         self.htmlview.realize()
         self.htmlview.show()
