@@ -1,16 +1,23 @@
 #!/usr/bin/env python
 """
-A lint interface written in gtk.
+A dokuwiki browser and editor.
 """
 import user
 import os
 import gtk
 import pango
 import time
+import traceback
 
 from kiwi.ui.delegates import GladeDelegate
 from kiwi.ui.objectlist import ObjectList, Column, ObjectTree
 import kiwi.ui.proxywidget # XXX needed for pixbuf
+
+from kiwi.environ import environ
+lib = environ
+#lib.add_resource('glade', 'glade')
+lib.add_resource('pixmaps', 'pixmaps')
+
 
 from xmlrpclib import ServerProxy
 from urllib import urlencode
@@ -158,9 +165,11 @@ class DokuwikiView(GladeDelegate):
         self.view.vbox2.reorder_child(self.wikislist, 0)
         self.wikislist.add_list(cfg.getChildren())
         self.wikislist.connect("selection-changed", self.wiki_selected)
+        threads.deferToThread(self.download_favicons, cfg)
+
+    def download_favicons(self, cfg):
         for wiki in cfg.getChildren():
             self.download_favicon(wiki)
-
 
     def download_favicon(self, wiki):
         import urllib
@@ -262,17 +271,23 @@ class DokuwikiView(GladeDelegate):
         return threads.deferToThread(self._getVersion)
 
     def get_pagelist(self):
+        print "getpagelist1"
         pages = self._rpc.wiki.getAllPages()
         self._sections = {}
         self.objectlist.clear()
+        print "getpagelist1.5"
+        print "PAGES",pages
         for page in pages:
             self.add_page(page)
+        print "getpagelist2"
         self.view.new_page.set_sensitive(True)
         self.view.delete_page.set_sensitive(True)
         if self.wiki.current:
             self.set_selection(self.wiki.current)
+        print "getpagelist3"
         # XXX
         self.get_recent_changes()
+        print "getpagelist2"
 
     def _getRecentChanges(self):
         return self._rpc.wiki.getRecentChanges(int(time.time()-(60*60*24*7*12)))
@@ -396,6 +411,8 @@ class DokuwikiView(GladeDelegate):
 
     # put a page into the page tree
     def add_page(self, page):
+      print page
+      try:
         name = page["id"]
         path = name.split(":")
         prev = None
@@ -413,6 +430,8 @@ class DokuwikiView(GladeDelegate):
                 else:
                     new = self._sections[part_path]
             prev = new
+      except:
+        traceback.print_exc()
 
     def expand_to(self, pagename):
         path = pagename.split(":")
@@ -535,24 +554,42 @@ class DokuwikiView(GladeDelegate):
         cfg.save()
         self.connect(url, user, password)
 
+    def get_full_url(self, url, user, password):
+      try:
+        if user and password:
+            split_url = url.split('://')
+            proto = split_url[0]
+            base_url = split_url[1]
+            return proto + '://' + user + ':' + password + '@' + base_url
+        return url
+      except:
+        traceback.print_exc()
+
     def connect(self, url, user, password):
         # following commented line is for gtkhtml (not used)
         #simplebrowser.currentUrl = self.view.url.get_text()
         # handle response
         self.post("Connecting to " + url)
         params = urlencode({'u':user, 'p':password})
-        fullurl = url + "/lib/exe/xmlrpc.php?"+ params
+        print self.get_full_url(url, user, password)
+        fullurl = self.get_full_url(url, user, password) + "/lib/exe/xmlrpc.php?"+ params
+        print "serverproxy1"
         self._rpc = ServerProxy(fullurl)
+        print "serverproxy1"
         d = self.get_version()
         d.addCallback(self.connected)
         d.addErrback(self.error_connecting)
 
-    def error_connecting(self, *args):
+    def error_connecting(self, failure):
         self.post("Error connecting to " + self.wiki.url)
+        print failure.getErrorMessage()
 
     def connected(self, version):
+        print "connected1"
         self.view.version.set_text(version)
+        print "connected1.5"
         self.get_pagelist()
+        print "connected2"
         self.post("Connected")
 
     def on_delete_page__clicked(self, *args):
