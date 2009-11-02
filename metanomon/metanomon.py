@@ -14,10 +14,6 @@ from kiwi.ui.objectlist import ObjectList, Column, ObjectTree
 import kiwi.ui.proxywidget # XXX needed for pixbuf
 
 from kiwi.environ import environ
-lib = environ
-lib.add_resource('glade', 'glade')
-lib.add_resource('pixmaps', 'pixmaps')
-
 
 from xmlrpclib import ServerProxy
 from urllib import urlencode
