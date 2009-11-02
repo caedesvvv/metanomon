@@ -12,9 +12,12 @@ Package: metanomon
 Architecture: all
 Depends: ${python:Depends}, ${misc:Depends}, python-twisted-core, python-kiwi, python-metamodel, python-gnome2-extras
 XB-Python-Version: all
-Description: graphical interface for pylint
- Pylint is a Python source code analyzer which looks for programming
- errors, helps enforcing a coding standard and sniffs for some code
- smells (as defined in Martin Fowler's Refactoring book)
+Description: A desktop interface to access dokuwikis.
+ Metanomon is a desktop program to access dokuwikis easily, and edit
+ in a half wysiwyg fashion.
  .
- This is a graphical interface for pylint.
+ It offers more immediate access to document metadata as well as a
+ more productive workflow.
+ .
+ You can configure several wikis and start editing right away.
+
