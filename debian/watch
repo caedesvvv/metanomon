@@ -1,0 +1,2 @@
+version=3
+opts=pasv http://delcorp.org/code/lintgtk/lintgtk-(.*)\.tar\.gz

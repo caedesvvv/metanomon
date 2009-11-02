@@ -2,6 +2,7 @@
 Animated icon throbber
 """
 import gtk
+from kiwi.environ import environ
 
 class Throbber(object):
     """
@@ -9,9 +10,11 @@ class Throbber(object):
     """
     def __init__(self, image):
         self._image = image
-        self._image.set_from_file('images/Throbber-small.png')
+        path = environ.find_resource('images', 'Throbber-small.png')
+        self._image.set_from_file(path)
         self._static_image = self._image.get_pixbuf()
-        self._animation = gtk.gdk.PixbufAnimation('images/Throbber-small.gif')
+        path = environ.find_resource('images', 'Throbber-small.gif')
+        self._animation = gtk.gdk.PixbufAnimation(path)
 
     def start(self):
         """

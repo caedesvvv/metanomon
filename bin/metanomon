@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+"""
+A dokuwiki browser and editor.
+"""
+from metanomon.metanomon import DokuwikiView
+from twisted.internet import reactor
+
+if __name__ == "__main__":
+    app = DokuwikiView()
+    app.show()
+    reactor.run()
+
